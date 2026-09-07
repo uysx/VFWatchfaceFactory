@@ -17,22 +17,6 @@ pip install -r requirements.txt
 python3 main.py
 ```
 
-## The one hard rule this app follows everywhere
-
-**No watch-face widget value is ever rendered with Qt text APIs.** There is no
-`QPainter.drawText()`, no `QLabel`/`QFont` used to draw a time, date,
-heart-rate, battery percentage, or anything else a widget displays. Every
-value — `10:08`, `98%`, `en_wed`, a rotating clock hand — is composed
-entirely from image assets you provide, looked up by filename stem out of a
-font/asset folder and composited with `QPainter.drawImage()`. This is
-implemented in `app/glyph_render.py` (digit/letter glyph composition) and
-`app/watch_render.py` (clock-hand rotation).
-
-The yellow widget-selection rectangle drawn on the canvas is editor-only UI:
-it is added directly to the `QGraphicsScene` by `canvas_scene.py` and is
-never written into the widget's JSON, and it is hidden before the scene is
-rasterized into `preview.png`.
-
 ## iwf.json / font.json compatibility
 
 `Project.to_pretty_iwf_json()` / `to_compact_font_json()` reproduce the
