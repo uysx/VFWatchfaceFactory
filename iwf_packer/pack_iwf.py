@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-createiwffromfolder.py - Create IWF files from folder structure
+pack_iwf.py - Create IWF files from folder structure
 
 Creates .iwf files from a folder structure containing images and configuration.
 Reads iwf.json for background/preview and font.json for bank order.
