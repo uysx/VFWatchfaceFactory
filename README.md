@@ -1,6 +1,6 @@
 # VFWatchfaceFactory
 
-<img width="1402" height="932" alt="VFWatchfaceFactory" src="https://github.com/user-attachments/assets/e10128c6-5243-4b3d-8eff-1ffba03284bb" />
+<img width="1402" height="1284" alt="Screenshot 2026-09-10 175812" src="https://github.com/user-attachments/assets/da4a444a-53e5-4948-85e5-865951815cd3" />
 
 A watch face editor for VeryFit smartwatches, inspired by ArnCep's
 ATSDialFactory.
