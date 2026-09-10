@@ -105,7 +105,7 @@ class CanvasScene(QGraphicsScene):
             return
 
         image = glyph_render.render_custom_widget_image(
-            entry.type_value, entry.image_strip, entry.data
+            entry.type_value, entry.image_strip, entry.data, project.preview
         ) if entry.widget_kind == "custom" else QImage()
 
         x = int(entry.data.get("x", 0) or 0)
@@ -127,7 +127,7 @@ class CanvasScene(QGraphicsScene):
         self._widget_items[index] = [item]
 
     def _render_watch(self, project: Project, entry: WidgetEntry, index: int):
-        hands = watch_render.render_watch_hands(project.project_dir, entry.data)
+        hands = watch_render.render_watch_hands(project.project_dir, entry.data, project.preview)
         items = []
         for key in ("hour", "minute", "second"):
             hand = hands.get(key)

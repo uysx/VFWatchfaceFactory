@@ -53,22 +53,15 @@ LETTER_BANKS = {
 
 LETTER_PREVIEW = {"week": "en_wed", "month": "en_sept", "apm": "en_am"}
 
-# Preview / auto-size values for digit (image-glyph-composed) widgets.
-DIGIT_PREVIEW = {
-    "time": "10:08",
-    "hour": "10", "hourhi": "1", "hourlo": "0",
-    "min": "08", "minhi": "0", "minlo": "8",
-    "second": "36",
-    "date": "24/09", "day": "24", "year": "2025",
-    "step": "23980",
-    "calorie": "839",
-    "heartrate": "128",
-    "distance": "16.79",
-    "exercise": "20",
-    "walk": "10",
-    "battery": "100%",
-    "weather": "28",
-}
+# NOTE: fixed digit/letter "preview values" used to live here as static
+# dicts (DIGIT_PREVIEW / a second copy of LETTER_PREVIEW use). They have
+# been superseded by app.preview_data.PreviewData, which computes each
+# widget's preview string dynamically from a single shared, user-editable
+# clock/calendar/metrics state instead of one hard-coded demo value per
+# type. See glyph_render.py's _preview_value_for() and PreviewData's
+# weekday_glyph_name()/month_glyph_name()/apm_glyph_name(). LETTER_PREVIEW
+# above is kept only as a static fallback for callers that don't have a
+# PreviewData instance on hand.
 
 # Non-digit characters that map onto a glyph filename (glyph "10" is the
 # conventional slot for punctuation on these fonts, matching the reference).

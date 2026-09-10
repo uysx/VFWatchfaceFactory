@@ -15,6 +15,7 @@ from .device_config import get_device
 from .project import Project, WidgetEntry, load_image_strip
 from .canvas_scene import CanvasScene
 from .properties_panel import PropertiesPanel
+from .preview_panel import PreviewValuesPanel
 from .dialogs import NewProjectDialog, ClockHandDialog, FolderNameDialog, copy_images_to_folder
 
 
@@ -63,6 +64,11 @@ class MainWindow(QMainWindow):
         panel.setMaximumWidth(380)
         layout = QVBoxLayout(panel)
 
+        # --- Preview values (clock/calendar/metrics every widget previews against) ---
+        self.preview_panel = PreviewValuesPanel()
+        self.preview_panel.changed.connect(self._on_preview_values_changed)
+        layout.addWidget(self.preview_panel)
+
         # --- Add widget ---
         add_box = QGroupBox("Add Widget")
         form = QFormLayout(add_box)
@@ -110,6 +116,7 @@ class MainWindow(QMainWindow):
         self._left_controls = [
             self.kind_combo, self.type_combo, self.add_widget_btn,
             self.current_combo, self.remove_btn, self.properties,
+            self.preview_panel,
         ]
         self._canvas_controls = [bg_btn, preview_btn]
         return panel
@@ -231,6 +238,7 @@ class MainWindow(QMainWindow):
         device = get_device(self.project.device_id)
         self.scene.reset(device.canvas_w, device.canvas_h)
         self.current_index = -1
+        self.preview_panel.load(self.project.preview)
         self._rebuild_widget_combo()
         self._refresh_json_views()
         self._set_project_controls_enabled(True)
@@ -247,6 +255,7 @@ class MainWindow(QMainWindow):
             return
 
         self.scene.render_all(self.project)
+        self.preview_panel.load(self.project.preview)
         self._rebuild_widget_combo(0 if self.project.widgets else -1)
         self._refresh_json_views()
         self._set_project_controls_enabled(True)
@@ -520,6 +529,18 @@ class MainWindow(QMainWindow):
         self.scene.update_selection(self.project, self.current_index)
         self._refresh_json_views()
 
+    def _on_preview_values_changed(self):
+        self.preview_panel.apply_to(self.project.preview)
+        for i in range(len(self.project.widgets)):
+            self.scene.render_widget(self.project, i, preserve_size=True)
+        if self.current_index >= 0:
+            self.scene.update_selection(self.project, self.current_index)
+        if self.project.project_open:
+            try:
+                self.project.save_preview_json()
+            except OSError:
+                pass
+
     def _rebuild_widget_combo_label_only(self):
         self.current_combo.blockSignals(True)
         for i, entry in enumerate(self.project.widgets):
@@ -646,7 +667,7 @@ class MainWindow(QMainWindow):
         strip = load_image_strip(dest_folder)
 
         data = reg.default_custom_json(type_value, folder_name, count)
-        size = glyph_render.measure_custom_widget(type_value, strip, data)
+        size = glyph_render.measure_custom_widget(type_value, strip, data, self.project.preview)
         data["w"] = size.width() if size.width() > 0 else 50
         data["h"] = size.height() if size.height() > 0 else 20
 

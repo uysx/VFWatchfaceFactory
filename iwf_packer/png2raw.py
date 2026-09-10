@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-png2raw.py - Convert PNG images to VeryFit RAW format
+pngtoveryfitraw.py - Convert PNG images to VeryFit RAW format
 
 Converts PNG/BMP images to the RAW format used by VeryFit watch faces.
 Format: "RAW\0" + uint16_le(width) + uint16_le(height) + RGB565 data + A4 alpha

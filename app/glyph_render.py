@@ -9,18 +9,23 @@ it is resolved to a glyph filename (conventionally "10") exactly like any
 digit, exactly as the source font provides it.
 
 Two families of custom widgets:
-  * "digit" widgets (time, date, week is NOT digit - see letter widgets)
+  * "digit" widgets (time, date, hour, min, second, calorie, distance, ...)
     render a string of characters by looking up one glyph image per
     character and compositing them left-to-right (or wrapped, depending on
-    alignment), matching the reference editor's renderCustomWidgetImage().
+    alignment). The character string itself is computed from a shared,
+    user-editable PreviewData (app.preview_data) instead of one fixed demo
+    value per type - so setting the preview clock to 9:30 makes the "time"
+    widget show "09:30" and the "hour" widget show "09", in sync.
   * "letter" widgets (week, month, apm) look up a single named image
-    directly, e.g. "en_wed.png".
+    directly, e.g. "en_wed.png" - also chosen from PreviewData (the actual
+    weekday/month/am-or-pm implied by the current preview date and time).
   * "icon" / "anima" / "redpoint" widgets show a single static image.
 """
 from PyQt6.QtCore import Qt, QSize
 from PyQt6.QtGui import QImage, QPainter
 
 from . import widget_registry as reg
+from .preview_data import PreviewData
 
 
 def _glyph_key_for_char(ch: str) -> str:
@@ -34,16 +39,69 @@ def _glyph_key_for_char(ch: str) -> str:
     return ""
 
 
-def _preview_value_for(type_value: str, json_obj: dict) -> str:
+def _preview_value_for(type_value: str, json_obj: dict, preview: PreviewData) -> str:
+    """
+    Compute the on-canvas preview string for a digit widget from the shared,
+    user-editable PreviewData - e.g. with preview.hour=9, preview.minute=30:
+        "time"    -> "09:30"
+        "hour"    -> "09"
+        "hourhi"  -> "0"
+        "hourlo"  -> "9"
+        "min"     -> "30"
+        "minhi"   -> "3"
+        "minlo"   -> "0"
+    This replaces the old single hard-coded demo value per widget type -
+    every digit widget now stays in sync with one shared clock/calendar/
+    metrics state.
+    """
+    hh = f"{preview.hour12():02d}"
+    mm = f"{preview.minute:02d}"
+    ss = f"{preview.second:02d}"
+    year, month, day = preview.safe_date_parts()
+
+    if type_value == "time":
+        return f"{hh}:{mm}"
+    if type_value == "hour":
+        return hh
+    if type_value == "hourhi":
+        return hh[0]
+    if type_value == "hourlo":
+        return hh[1]
+    if type_value == "min":
+        return mm
+    if type_value == "minhi":
+        return mm[0]
+    if type_value == "minlo":
+        return mm[1]
+    if type_value == "second":
+        return ss
+    if type_value == "date":
+        return f"{day:02d}/{month:02d}"
+    if type_value == "day":
+        return f"{day:02d}"
+    if type_value == "year":
+        return str(year)
+    if type_value == "step":
+        return str(int(preview.step))
+    if type_value == "calorie":
+        return str(int(preview.calorie))
+    if type_value == "heartrate":
+        return str(int(preview.heartrate))
+    if type_value == "distance":
+        return f"{preview.distance:.2f}"
+    if type_value == "exercise":
+        return str(int(preview.exercise))
+    if type_value == "walk":
+        return str(int(preview.walk))
     if type_value == "battery":
         fontnum = int(json_obj.get("fontnum", 11) or 0)
-        return "100" if fontnum <= 10 else "100%"
+        value = str(int(preview.battery))
+        return value if fontnum <= 10 else value + "%"
     if type_value == "weather":
         style = int(json_obj.get("style", 2) or 2)
-        base = reg.DIGIT_PREVIEW.get(type_value, "0")
         suffix = reg.WEATHER_UNIT_SENTINEL_C if style == 2 else reg.WEATHER_UNIT_SENTINEL_F
-        return base + suffix
-    return reg.DIGIT_PREVIEW.get(type_value, "0")
+        return str(int(preview.weather)) + suffix
+    return "0"
 
 
 def _lookup_glyph(strip: dict, key: str):
@@ -123,8 +181,8 @@ def _compose_autowrap(glyphs, canvas_w: int) -> QImage:
     return result
 
 
-def render_digit_widget(strip: dict, type_value: str, json_obj: dict) -> QImage:
-    value = _preview_value_for(type_value, json_obj)
+def render_digit_widget(strip: dict, type_value: str, json_obj: dict, preview: PreviewData) -> QImage:
+    value = _preview_value_for(type_value, json_obj, preview)
     glyphs = _collect_glyphs(strip, value)
     if not glyphs:
         return QImage()
@@ -137,8 +195,20 @@ def render_digit_widget(strip: dict, type_value: str, json_obj: dict) -> QImage:
     return _compose_row(glyphs, canvas_w, align)
 
 
-def render_letter_widget(strip: dict, type_value: str) -> QImage:
-    key = reg.LETTER_PREVIEW.get(type_value, "")
+# Static fallback used only if no PreviewData is available (should not
+# normally happen - every call site threads a real PreviewData through).
+_LETTER_FALLBACK = {"week": "en_wed", "month": "en_sept", "apm": "en_am"}
+
+
+def render_letter_widget(strip: dict, type_value: str, preview: PreviewData) -> QImage:
+    if type_value == "week":
+        key = preview.weekday_glyph_name()
+    elif type_value == "month":
+        key = preview.month_glyph_name()
+    elif type_value == "apm":
+        key = preview.apm_glyph_name()
+    else:
+        key = _LETTER_FALLBACK.get(type_value, "")
     img = _lookup_glyph(strip, key)
     if img is not None:
         return img
@@ -156,8 +226,10 @@ def render_static_single_image(strip: dict, key: str) -> QImage:
     return QImage()
 
 
-def render_custom_widget_image(type_value: str, strip: dict, json_obj: dict) -> QImage:
+def render_custom_widget_image(type_value: str, strip: dict, json_obj: dict, preview: PreviewData = None) -> QImage:
     """Dispatch to the correct pure-image renderer for a custom/* widget."""
+    if preview is None:
+        preview = PreviewData()
     if type_value == "anima":
         return render_static_single_image(strip, "0")
     if type_value == "icon":
@@ -165,12 +237,14 @@ def render_custom_widget_image(type_value: str, strip: dict, json_obj: dict) -> 
     if type_value == "redpoint":
         return render_static_single_image(strip, "0")
     if type_value in reg.LETTER_TYPES:
-        return render_letter_widget(strip, type_value)
-    return render_digit_widget(strip, type_value, json_obj)
+        return render_letter_widget(strip, type_value, preview)
+    return render_digit_widget(strip, type_value, json_obj, preview)
 
 
-def measure_custom_widget(type_value: str, strip: dict, json_obj: dict) -> QSize:
-    img = render_custom_widget_image(type_value, strip, json_obj)
+def measure_custom_widget(type_value: str, strip: dict, json_obj: dict, preview: PreviewData = None) -> QSize:
+    if preview is None:
+        preview = PreviewData()
+    img = render_custom_widget_image(type_value, strip, json_obj, preview)
     if img.isNull():
         return QSize(50, 20)
     return img.size()

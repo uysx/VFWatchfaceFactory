@@ -3,6 +3,11 @@ Watch/time widget rendering: composes the hour/minute/second hand images and
 rotates each around its own pivot (center) point, then positions the rotated
 image so that pivot lands on the hand's anchor point on the watch face.
 
+The clock hands rotate to the shared, user-editable preview time
+(app.preview_data.PreviewData.hour/minute/second) rather than a single fixed
+demo time, so the hands stay in sync with the same "9:30" (or whatever the
+user has set) that every digit/letter widget on the face previews against.
+
 Angle formulas and padding/rotation geometry are ported directly from the
 reference C++ renderWatchHands():
     hour_angle   = (hour % 12 + minute / 60) * 30
@@ -26,9 +31,7 @@ from dataclasses import dataclass
 from PyQt6.QtCore import QPointF, Qt
 from PyQt6.QtGui import QImage, QPainter, QTransform, QColor
 
-PREVIEW_HOUR = 10
-PREVIEW_MIN = 8
-PREVIEW_SEC = 36
+from .preview_data import PreviewData
 
 
 @dataclass
@@ -72,15 +75,20 @@ def _load_hand_image(project_dir: str, filename: str) -> QImage:
     return img.convertToFormat(QImage.Format.Format_ARGB32_Premultiplied)
 
 
-def render_watch_hands(project_dir: str, watch_json: dict):
+def render_watch_hands(project_dir: str, watch_json: dict, preview: PreviewData = None):
     """
     Returns a dict {"hour": RenderedHand, "minute": RenderedHand, "second": RenderedHand}
     (omitting any hand whose source image could not be loaded).
     Positions are already shifted by the watch widget's own x/y offset.
+    Hand angles are computed from `preview` (defaults to PreviewData()'s
+    stock 09:30:00 if none is supplied).
     """
-    hour_angle = (PREVIEW_HOUR % 12 + PREVIEW_MIN / 60.0) * 30.0
-    min_angle = (PREVIEW_MIN + PREVIEW_SEC / 60.0) * 6.0
-    sec_angle = PREVIEW_SEC * 6.0
+    if preview is None:
+        preview = PreviewData()
+
+    hour_angle = (preview.hour % 12 + preview.minute / 60.0) * 30.0
+    min_angle = (preview.minute + preview.second / 60.0) * 6.0
+    sec_angle = preview.second * 6.0
 
     wx = int(watch_json.get("x", 0) or 0)
     wy = int(watch_json.get("y", 0) or 0)

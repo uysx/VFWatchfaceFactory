@@ -3,21 +3,53 @@ Project model.
 
 Holds the in-memory state of one VFWatchfaceFactory project: the ordered
 list of widget entries (each backed by a plain dict that mirrors the exact
-iwf.json item schema), the font.json item list, and the project directory on
-disk. This module contains no Qt widgets - only QImage for the in-memory
-image strips - so it stays cleanly separable from the UI layer.
+iwf.json item schema), the font.json item list, the project directory on
+disk, and the shared, editable PreviewData that drives what value every
+widget's on-canvas preview image is composed from. This module contains no
+Qt widgets - only QImage for the in-memory image strips - so it stays
+cleanly separable from the UI layer.
 """
+import dataclasses
 import json
 import os
+import pathlib
 from dataclasses import dataclass, field
 
 from PyQt6.QtGui import QImage
 
 from . import widget_registry as reg
 from .device_config import DEFAULT_DEVICE_ID, get_device
+from .preview_data import PreviewData
 
 
 IMAGE_EXTENSIONS = (".png", ".bmp", ".PNG", ".BMP")
+
+# PreviewData is editor-only state (never part of the iwf.json spec) and
+# must NOT be written anywhere inside the project folder - that folder's
+# contents are exactly what iwf_packer/pack_iwf.py scans and packs, and
+# only files the user explicitly added as watch-face assets belong there.
+# Instead, preview values are cached per-project in a single file under a
+# per-user application-data directory, keyed by the project's absolute
+# path, so they still persist across sessions without touching the project
+# folder at all.
+APP_DATA_DIR = pathlib.Path.home() / ".vfwatchfacefactory"
+PREVIEW_CACHE_FILE = APP_DATA_DIR / "preview_cache.json"
+
+
+def _load_preview_cache() -> dict:
+    if not PREVIEW_CACHE_FILE.is_file():
+        return {}
+    try:
+        with open(PREVIEW_CACHE_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def _save_preview_cache(cache: dict):
+    APP_DATA_DIR.mkdir(parents=True, exist_ok=True)
+    with open(PREVIEW_CACHE_FILE, "w", encoding="utf-8") as f:
+        json.dump(cache, f)
 
 
 def load_image_strip(folder: str) -> dict:
@@ -61,6 +93,7 @@ class Project:
         self.widgets: list[WidgetEntry] = []
         self.font_items: list[dict] = []   # [{"name":..., "bpp":16, "format":"png"}]
         self._file_counter = 0
+        self.preview = PreviewData()
 
     # ------------------------------------------------------------------
     # Project lifecycle
@@ -79,12 +112,37 @@ class Project:
         self.widgets = []
         self.font_items = []
         self._file_counter = 0
+        self.preview = PreviewData()
+        self.load_preview_json()
         return project_dir
 
     def next_bkground_filename(self, suffix: str) -> str:
         name = f"files{self._file_counter}.{suffix}"
         self._file_counter += 1
         return name
+
+    # ------------------------------------------------------------------
+    # PreviewData persistence - a per-user app-data cache keyed by this
+    # project's absolute path, NOT a file inside the project folder.
+    # ------------------------------------------------------------------
+    def save_preview_json(self):
+        if not self.project_dir:
+            return None
+        cache = _load_preview_cache()
+        cache[os.path.abspath(self.project_dir)] = dataclasses.asdict(self.preview)
+        _save_preview_cache(cache)
+        return str(PREVIEW_CACHE_FILE)
+
+    def load_preview_json(self):
+        if not self.project_dir:
+            return
+        cache = _load_preview_cache()
+        raw = cache.get(os.path.abspath(self.project_dir))
+        if not raw:
+            return
+        for key, value in raw.items():
+            if hasattr(self.preview, key):
+                setattr(self.preview, key, value)
 
     # ------------------------------------------------------------------
     # font.json bookkeeping
@@ -229,6 +287,8 @@ class Project:
         self.preview_name = root.get("preview", "preview.png")
         self.widgets = []
         self.font_items = []
+        self.preview = PreviewData()
+        self.load_preview_json()
 
         skipped = 0
         for item in root.get("item", []):
